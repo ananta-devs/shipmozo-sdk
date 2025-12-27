@@ -1,4 +1,6 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
+import axiosRetry from 'axios-retry';
+import { ShipmozoError } from './errors';
 import {
   ShipmozoConfig,
   ApiResponse,
@@ -17,7 +19,9 @@ import {
   OrderLabel,
   TrackOrderResponse,
   CreateWarehousePayload,
-  Warehouse
+  Warehouse,
+  RateCalculatorResponse,
+  GetOrderDetailResponse
 } from './types';
 
 export class Shipmozo {
@@ -26,6 +30,13 @@ export class Shipmozo {
   private privateKey: string;
 
   constructor(config: ShipmozoConfig) {
+    if (!config.publicKey) {
+      throw new ShipmozoError("Configuration error: publicKey is required.");
+    }
+    if (!config.privateKey) {
+      throw new ShipmozoError("Configuration error: privateKey is required.");
+    }
+
     this.publicKey = config.publicKey;
     this.privateKey = config.privateKey;
     
@@ -37,6 +48,17 @@ export class Shipmozo {
         'Content-Type': 'application/json',
         'public-key': this.publicKey,
         'private-key': this.privateKey
+      },
+      timeout: 30000 // 30s timeout default
+    });
+
+    // Configure retries for network errors and 5xx responses
+    axiosRetry(this.client, { 
+      retries: 3, 
+      retryDelay: axiosRetry.exponentialDelay,
+      retryCondition: (error) => {
+        return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
+               (error.response ? error.response.status >= 500 : false);
       }
     });
   }
@@ -46,18 +68,21 @@ export class Shipmozo {
       const response = await this.client.request<ApiResponse<T>>(config);
       // The API returns 200 even for logical errors, so we check 'result'
       if (response.data.result === "0") {
-        throw new Error(response.data.message || 'Unknown API Error');
+        throw new ShipmozoError(response.data.message || 'Unknown API Error', 'API_ERROR', 200, response.data);
       }
       return response.data;
     } catch (error: any) {
-      if (error.response && error.response.data) {
-         // Handle cases where the server might return a non-2xx status but with the API error format
-         const apiError = error.response.data as ApiResponse<any>;
-         if (apiError.message) {
-            throw new Error(apiError.message);
-         }
+      if (error instanceof ShipmozoError) {
+        throw error;
       }
-      throw error;
+      if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError<ApiResponse<any>>;
+        const message = axiosError.response?.data?.message || axiosError.message;
+        const status = axiosError.response?.status;
+        const data = axiosError.response?.data;
+        throw new ShipmozoError(message, axiosError.code, status, data);
+      }
+      throw new ShipmozoError(error.message || 'Unknown Error');
     }
   }
 
@@ -146,9 +171,8 @@ export class Shipmozo {
   /**
    * Retrieves details of a specific order.
    */
-  async getOrderDetail(orderId: string): Promise<any> {
-    // Return type isn't fully detailed in docs, assuming generic object or extending OrderPayload
-    const response = await this.request<any>({
+  async getOrderDetail(orderId: string): Promise<GetOrderDetailResponse> {
+    const response = await this.request<GetOrderDetailResponse>({
       method: 'GET',
       url: `/get-order-detail/${orderId}`
     });
@@ -157,8 +181,6 @@ export class Shipmozo {
 
   /**
    * Authenticates a user (Alternative to providing keys in constructor if dynamically fetching).
-   * Note: This returns keys, but this instance is already configured. 
-   * Useful for initial setup flows.
    */
   async login(username: string, password: string): Promise<LoginResponse[]> {
     const response = await this.request<LoginResponse[]>({
@@ -172,10 +194,8 @@ export class Shipmozo {
   /**
    * Calculates courier rates for a shipment.
    */
-  async calculateRate(payload: RateCalculatorPayload): Promise<any> {
-    // Response structure not explicitly detailed in OCR for successful calculation data, 
-    // assuming it returns a list of rates or similar.
-    const response = await this.request<any>({
+  async calculateRate(payload: RateCalculatorPayload): Promise<RateCalculatorResponse> {
+    const response = await this.request<RateCalculatorResponse>({
       method: 'POST',
       url: '/rate-calculator',
       data: payload

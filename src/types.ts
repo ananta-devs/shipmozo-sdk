@@ -4,7 +4,7 @@ export interface ShipmozoConfig {
   baseUrl?: string;
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = Record<string, unknown>> {
   result: "1" | "0";
   message: string;
   data: T;
@@ -146,6 +146,14 @@ export interface RateCalculatorPayload {
   dimensions: Dimension[];
 }
 
+export interface RateCalculatorResponse {
+    [key: string]: unknown;
+}
+
+export interface GetOrderDetailResponse {
+    [key: string]: unknown;
+}
+
 export interface PincodeServiceabilityPayload {
   pickup_pincode: number | string;
   delivery_pincode: number | string;
@@ -161,6 +169,13 @@ export interface OrderLabel {
   created_at: string;
 }
 
+export interface ScanDetail {
+  scan_date_time: string;
+  scan_status: string;
+  scan_location: string;
+  [key: string]: unknown;
+}
+
 export interface TrackOrderResponse {
   order_id: string;
   reference_id: string;
@@ -169,7 +184,7 @@ export interface TrackOrderResponse {
   expected_delivery_date: string | null;
   current_status: string;
   status_time: string | null;
-  scan_detail: any[];
+  scan_detail: ScanDetail[];
 }
 
 export interface CreateWarehousePayload {

@@ -93,6 +93,24 @@ const mpsOrder = await client.pushOrder({
 });
 ```
 
+### Error Handling
+
+All errors thrown by the SDK are instances of `ShipmozoError`. You can catch them to access more details like error codes or API response data.
+
+```typescript
+import { Shipmozo, ShipmozoError } from 'shipmozo-sdk';
+
+try {
+  await client.pushOrder({...});
+} catch (error) {
+  if (error instanceof ShipmozoError) {
+    console.error('API Error:', error.message);
+    console.error('Error Code:', error.code);
+    console.error('Status:', error.status);
+  }
+}
+```
+
 ### Other Methods
 
 *   `info()`: Check API status.
